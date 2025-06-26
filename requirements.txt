@@ -13,3 +13,4 @@ uvicorn[standard]
 opencv-python
 requests
 geocoder
+shapely
