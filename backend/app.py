@@ -15,8 +15,8 @@ import numpy as np
 from .camera_streams import get_video_captures
 from .ai_agent import choose_road_to_open
 from .logger import log_traffic_data
-from yolov8_model.traffic_detector import process_frame
-from ReinforcementLearning.predict import predict_duration
+from .yolov8_model.traffic_detector import process_frame
+from .ReinforcementLearning.predict import predict_duration
 
 app = FastAPI()
 
