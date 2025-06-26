@@ -1,7 +1,8 @@
 import requests
 import geocoder
+import os
 
-API_KEY = "f0cfc7c33481b4276cc57af233d0496b"  # Replace with your real API key
+api_key = os.getenv("OPENWEATHER_API_KEY")  # Replace with your real API key
 
 def get_current_location():
     g = geocoder.ip('me')  # Uses your IP to approximate location
@@ -12,7 +13,7 @@ def get_current_location():
 
 def get_weather_data():
     lat, lon = get_current_location()
-    url = f"https://api.openweathermap.org/data/2.5/weather?lat={lat}&lon={lon}&appid={API_KEY}&units=metric"
+    url = f"https://api.openweathermap.org/data/2.5/weather?lat={lat}&lon={lon}&appid={api_key}&units=metric"
 
     response = requests.get(url)
     if response.status_code == 200:

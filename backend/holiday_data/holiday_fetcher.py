@@ -5,6 +5,7 @@ import json
 from google.auth.transport.requests import Request
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
+import base64
 
 # Constants
 SCOPES = ['https://www.googleapis.com/auth/calendar.readonly']
@@ -14,7 +15,12 @@ CACHE_FILE = 'upcoming_holidays.json'
 def get_credentials():
     creds = None
     token_path = 'token.pickle'
-    creds_path = 'credentials.json'
+
+    if not os.path.exists(token_path):
+        with open('token.pickle.b64', 'rb') as f:
+            encoded = f.read()
+        with open(token_path, 'wb') as f:
+            f.write(base64.b64decode(encoded))
 
     if os.path.exists(token_path):
         with open(token_path, 'rb') as token:
@@ -24,7 +30,7 @@ def get_credentials():
         if creds and creds.expired and creds.refresh_token:
             creds.refresh(Request())
         else:
-            flow = InstalledAppFlow.from_client_secrets_file(creds_path, SCOPES)
+            flow = InstalledAppFlow.from_client_config(json.loads(os.environ['GOOGLE_CLIENT_SECRET_JSON']), SCOPES)
             creds = flow.run_local_server(port=0)
         with open(token_path, 'wb') as token:
             pickle.dump(creds, token)
