@@ -4,7 +4,7 @@ from datetime import date, datetime
 import os
 import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from weather_api import get_weather_data
+from backend.weather_api import get_weather_data
 
 class TrafficEnv:
     def __init__(self):

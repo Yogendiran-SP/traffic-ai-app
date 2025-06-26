@@ -1,7 +1,7 @@
 import numpy as np
 import random
 import joblib
-from trafficenv import TrafficEnv
+from backend.ReinforcementLearning.trafficenv import TrafficEnv
 
 # Hyperparameters
 alpha = 0.1       # Learning rate
