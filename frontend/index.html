@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Traffic AI Dashboard</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <header>
+        <h1>Traffic AI Dashboard</h1>
+    </header>
+    <main>
+        <section class="video-section">
+            <h2>Live Traffic Feeds</h2>
+            <div class="video-grid">
+                <div class="video-container">
+                    <h3>North</h3>
+                    <img id="video-north" src="" alt="North Feed">
+                    <div class="vehicle-count">Vehicles: <span id="count-north">-</span></div>
+                </div>
+                <div class="video-container">
+                    <h3>South</h3>
+                    <img id="video-south" src="" alt="South Feed">
+                    <div class="vehicle-count">Vehicles: <span id="count-south">-</span></div>
+                </div>
+                <div class="video-container">
+                    <h3>East</h3>
+                    <img id="video-east" src="" alt="East Feed">
+                    <div class="vehicle-count">Vehicles: <span id="count-east">-</span></div>
+                </div>
+                <div class="video-container">
+                    <h3>West</h3>
+                    <img id="video-west" src="" alt="West Feed">
+                    <div class="vehicle-count">Vehicles: <span id="count-west">-</span></div>
+                </div>
+            </div>
+        </section>
+        <section class="status-section">
+            <h2>Traffic Light State</h2>
+            <div id="traffic-light-state" class="traffic-light-state"></div>
+        </section>
+        <section class="stats-section">
+            <h2>Stats</h2>
+            <div id="stats"></div>
+        </section>
+        <section class="logs-section">
+            <h2>Logs</h2>
+            <ul id="logs"></ul>
+        </section>
+    </main>
+    <script src="script.js"></script>
+</body>
+</html>
