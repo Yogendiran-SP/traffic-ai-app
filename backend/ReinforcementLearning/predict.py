@@ -1,7 +1,12 @@
 import joblib
+import os
 import pandas as pd
 
-model = joblib.load("../rl_model/rl_duration_predictor.pkl")  # Load your trained RL model
+# Get absolute path to model file
+model_path = os.path.join(os.path.dirname(__file__), "..", "rl_model", "rl_duration_predictor.pkl")
+model_path = os.path.abspath(model_path)
+
+model = joblib.load(model_path)  # Load your trained RL model
 
 def predict_duration(road_counts, green_road):
     data = {
