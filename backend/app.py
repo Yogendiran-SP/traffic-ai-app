@@ -41,7 +41,7 @@ rl_model = joblib.load("backend/rl_model/rl_duration_predictor.pkl")
 caps = get_video_captures()
 
 # Logs file
-LOG_FILE = Path("backend/traffic_logs.json")
+LOG_FILE = Path("backend/traffic_log.json")
 if not LOG_FILE.exists():
     LOG_FILE.write_text(json.dumps([]))
 
