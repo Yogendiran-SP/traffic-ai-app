@@ -35,7 +35,7 @@ app.mount("/", StaticFiles(directory=frontend_path, html=True), name="frontend")
 
 # Load models
 yolo_model = YOLO("./yolov8_model/yolov8n.pt")
-rl_model = joblib.load("backend/ml_model/model.pkl")
+rl_model = joblib.load("backend/rl_model/rl_duration_predictor.pkl")
 
 # Initialize video streams
 caps = get_video_captures()
