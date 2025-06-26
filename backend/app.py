@@ -1,14 +1,16 @@
 import os
-from fastapi import FastAPI, Request
-from fastapi.responses import FileResponse, StreamingResponse, JSONResponse
+from fastapi import FastAPI
+from fastapi.responses import StreamingResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 import cv2
-from pathlib import Path
-import joblib
 from datetime import datetime
-import numpy as np
+import json
+from pathlib import Path
+
 from ultralytics import YOLO
+import joblib
+import numpy as np
 
 from .camera_streams import get_video_captures
 from .ai_agent import choose_road_to_open
@@ -18,7 +20,7 @@ from ReinforcementLearning.predict import predict_duration
 
 app = FastAPI()
 
-# Allow CORS for frontend
+# Allow frontend access
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -27,20 +29,23 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Serve static files (frontend)
+# Serve frontend
 frontend_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '../frontend'))
 app.mount("/", StaticFiles(directory=frontend_path, html=True), name="frontend")
 
-# Loading  models
-yolo_model = YOLO("./yolov8_model/yolov8n.pt") # 'n' is nano (small,fast), you can also use 'm' or'l' for better accuracy
+# Load models
+yolo_model = YOLO("./yolov8_model/yolov8n.pt")
 rl_model = joblib.load("backend/ml_model/model.pkl")
 
-# Load video
+# Initialize video streams
 caps = get_video_captures()
 
-# --- API Endpoints ---
+# Logs file
+LOG_FILE = Path("backend/traffic_logs.json")
+if not LOG_FILE.exists():
+    LOG_FILE.write_text(json.dumps([]))
 
-# 1. Video streaming endpoint (sample, one direction)
+# --- 1. Video stream endpoint ---
 VIDEO_PATHS = {
     "north": os.path.abspath(os.path.join(os.path.dirname(__file__), '../data/north.mp4')),
     "south": os.path.abspath(os.path.join(os.path.dirname(__file__), '../data/south.mp4')),
@@ -66,85 +71,78 @@ def video_feed(direction: str):
         return JSONResponse({"error": "Video not found"}, status_code=404)
     return StreamingResponse(gen_frames(video_path), media_type="multipart/x-mixed-replace; boundary=frame")
 
-# 2. Detections endpoint (mock)
+# --- 2. Real-time vehicle detections ---
 @app.get("/api/detections")
 def get_detections():
-    # Replace with real detection logic
-    return {
-        "north": {"vehicles": 5},
-        "south": {"vehicles": 3},
-        "east": {"vehicles": 7},
-        "west": {"vehicles": 2},
-    }
+    vehicle_counts = {}
+    for road, cap in caps.items():
+        ret, frame = cap.read()
+        if not ret:
+            vehicle_counts[road] = {"vehicles": 0}
+            continue
+        frame = cv2.resize(frame, (640, 480))
+        _, count = process_frame(frame, yolo_model, road)
+        vehicle_counts[road] = {"vehicles": count}
+    return vehicle_counts
 
-# 3. Traffic light state endpoint (mock)
+# --- 3. Traffic light AI decision ---
 @app.get("/api/traffic-light")
 def get_traffic_light():
-    # Replace with real AI logic
-    return {
-        "green": "north",
-        "duration": 30,
-        "states": {
-            "north": "green",
-            "south": "red",
-            "east": "red",
-            "west": "red"
-        }
-    }
-
-# 4. Logs endpoint (mock)
-@app.get("/api/logs")
-def get_logs():
-    # Replace with real log reading
-    return {
-        "logs": [
-            {"time": "2024-06-25 10:00:00", "event": "Green to north for 30s"},
-            {"time": "2024-06-25 09:59:30", "event": "Green to east for 25s"},
-        ]
-    }
-
-# 5. Stats endpoint (mock)
-@app.get("/api/stats")
-def get_stats():
-    # Replace with real stats
-    return {
-        "total_vehicles": 17,
-        "average_wait_time": 12.5
-    }
-
-while True:
     road_counts = {}
-    processed_frames = {} 
-
     for road, cap in caps.items():
         ret, frame = cap.read()
         if not ret:
             continue
         frame = cv2.resize(frame, (640, 480))
-        # Process each frame
-        processed, count = process_frame(frame, yolo_model, road)
-        processed_frames[road] = processed
+        _, count = process_frame(frame, yolo_model, road)
         road_counts[road] = count
 
-    # AI selects road for green signal
     green_road = choose_road_to_open(road_counts)
-    green_duration = predict_duration(road_counts, green_road)
-    log_traffic_data(road_counts, green_road, green_duration)
-    print("Vehicle Counts:", road_counts)
-    print("Green Signal to:", green_road)
+    duration = predict_duration(road_counts, green_road)
+    log_traffic_data(road_counts, green_road, duration)
 
-    now = datetime.now()
+    state = {dir: "red" for dir in road_counts}
+    state[green_road] = "green"
 
+    log_entry = {
+        "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "event": f"Green to {green_road} for {duration}s"
+    }
 
-    # Display all frames
-    for road, frame in processed_frames.items():
-        label = f"{road.upper()} [GREEN]" if road == green_road else road.upper()
-        cv2.putText(frame, label, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0) if road == green_road else (0, 0, 255), 2)
-        cv2.imshow(road, frame)
+    logs = json.loads(LOG_FILE.read_text())
+    logs.insert(0, log_entry)
+    LOG_FILE.write_text(json.dumps(logs[:50]))  # Keep last 50 logs
 
-    if cv2.waitKey(1) & (0xFF) == ord('q'):
-        break
+    return {
+        "green": green_road,
+        "duration": duration,
+        "states": state
+    }
 
-for cap in caps.values():
-    cap.release()
-cv2.destroyAllWindows()
+# --- 4. View logs ---
+@app.get("/api/logs")
+def get_logs():
+    logs = json.loads(LOG_FILE.read_text())
+    return {"logs": logs}
+
+# --- 5. Summary stats ---
+@app.get("/api/stats")
+def get_stats():
+    road_counts = {}
+    total = 0
+    for road, cap in caps.items():
+        ret, frame = cap.read()
+        if not ret:
+            continue
+        frame = cv2.resize(frame, (640, 480))
+        _, count = process_frame(frame, yolo_model, road)
+        road_counts[road] = count
+        total += count
+
+    # Simplified wait time estimate
+    average_wait = np.mean(list(road_counts.values())) * 2  # seconds per car, adjust as needed
+
+    return {
+        "total_vehicles": total,
+        "average_wait_time": round(average_wait, 2)
+    }
