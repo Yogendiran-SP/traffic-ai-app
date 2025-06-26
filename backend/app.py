@@ -32,7 +32,7 @@ frontend_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '../fron
 app.mount("/", StaticFiles(directory=frontend_path, html=True), name="frontend")
 
 # Loading  models
-yolo_model = YOLO("./yolov8_model/yolov8m.pt") # 'n' is nano (small,fast), you can also use 'm' or'l' for better accuracy
+yolo_model = YOLO("./yolov8_model/yolov8n.pt") # 'n' is nano (small,fast), you can also use 'm' or'l' for better accuracy
 rl_model = joblib.load("backend/ml_model/model.pkl")
 
 # Load video
