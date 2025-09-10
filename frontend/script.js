@@ -59,12 +59,35 @@ function updateStats() {
         .then(res => res.json())
         .then(data => {
             const statsDiv = document.getElementById('stats');
+
+            let waitTimesHTML = "<div><b>Per-Road Wait Times:</b></div>";
+
+            for (const [road, time] of Object.entries(data.average_wait_time)) {
+                let color;
+
+                if (time <= 10) {
+                    color = "green";   // Low wait = Good
+                } else if (time <= 20) {
+                    color = "orange";  // Medium wait
+                } else {
+                    color = "red";     // High wait = Bad
+                }
+
+                waitTimesHTML += `
+                    <div style="color:${color}">
+                        ${road.toUpperCase()}: <b>${time}</b> s
+                    </div>
+                `;
+            }
+
             statsDiv.innerHTML = `
                 <div>Total Vehicles: <b>${data.total_vehicles}</b></div>
-                <div>Average Wait Time: <b>${data.average_wait_time}</b> s</div>
+                ${waitTimesHTML}
             `;
-        });
+        })
+        .catch(err => console.error("Error loading stats:", err));
 }
+
 
 function updateAll() {
     updateVideoFeeds();

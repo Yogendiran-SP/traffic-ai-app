@@ -1,22 +1,47 @@
+# backend/simulator.py
 import random
-import csv
-from datetime import datetime, timedelta
+import time
 
-roads = ['north', 'east', 'south', 'west']
+class TrafficSimulator:
+    def __init__(self):
+        self.roads = {"north": 0, "east": 0, "south": 0, "west": 0}
 
-with open("..traffic_log.csv", "w", newline="") as f:
-    writer = csv.writer(f)
-    writer.writerow(["timestamp", "north", "east", "south", "west", "green_road", "duration"])
-    
-    time = datetime.now()
-    for _ in range(200):
-        counts = {road: round(random.uniform(0, 10), 2) for road in roads}
-        green = max(counts, key=counts.get)
-        duration = int(5 + counts[green]*1.5)
+    def step(self, green_road, duration):
+        # 1. Vehicles arrive (all roads)
+        arrivals = {road: random.randint(0, 3) for road in self.roads}
+        for road in self.roads:
+            self.roads[road] += arrivals[road]
 
-        writer.writerow([
-            time.strftime("%Y-%m-%d %H:%M:%S"),
-            counts['north'], counts['east'], counts['south'], counts['west'],
-            green, duration
-        ])
-        time += timedelta(minutes=5)
+        # 2. Settling time → 1-2 sec no vehicles leave
+        settling_time = random.randint(1, 2)
+        effective_duration = max(0, duration - settling_time)
+
+        # 3. Vehicles leave during effective green
+        leaving = min(self.roads[green_road], random.randint(1, 2) * effective_duration)
+        self.roads[green_road] -= leaving
+
+        # 4. Yellow clearance time
+        yellow_time = 2  # fixed
+        total_cycle_time = duration + yellow_time
+
+        return self.roads.copy(), total_cycle_time, settling_time, yellow_time
+
+
+# Generator for continuous live traffic
+def generate_live_traffic(choose_road_to_open, predict_duration):
+    simulator = TrafficSimulator()
+    while True:
+        green_road = choose_road_to_open(simulator.roads)
+        duration = predict_duration(simulator.roads, green_road)
+
+        state, cycle_time, settle, yellow = simulator.step(green_road, duration)
+
+        yield {
+            "road_counts": state,
+            "green_road": green_road,
+            "duration": duration,
+            "settling_time": settle,
+            "yellow_time": yellow
+        }
+
+        time.sleep(cycle_time)  # includes green + yellow

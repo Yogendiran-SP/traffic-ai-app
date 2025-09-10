@@ -7,16 +7,14 @@ import cv2
 from datetime import datetime
 import json
 from pathlib import Path
-
-from ultralytics import YOLO
-import joblib
 import numpy as np
+import joblib
+from ultralytics import YOLO
 
-from .camera_streams import get_video_captures
 from .ai_agent import choose_road_to_open
 from .logger import log_traffic_data
-from .yolov8_model.traffic_detector import process_frame
 from .ReinforcementLearning.predict import predict_duration
+from .simulator import generate_live_traffic   # NEW
 
 app = FastAPI()
 
@@ -37,15 +35,12 @@ app.mount("/", StaticFiles(directory=frontend_path, html=True), name="frontend")
 yolo_model = YOLO("./yolov8_model/yolov8n.pt")
 rl_model = joblib.load("backend/rl_model/rl_duration_predictor.pkl")
 
-# Initialize video streams
-caps = get_video_captures()
-
 # Logs file
 LOG_FILE = Path("backend/traffic_log.json")
 if not LOG_FILE.exists():
     LOG_FILE.write_text(json.dumps([]))
 
-# --- 1. Video stream endpoint ---
+# --- 1. Video stream endpoint (kept same, optional for demo) ---
 VIDEO_PATHS = {
     "north": os.path.abspath(os.path.join(os.path.dirname(__file__), '../data/north.mp4')),
     "south": os.path.abspath(os.path.join(os.path.dirname(__file__), '../data/south.mp4')),
@@ -71,53 +66,41 @@ def video_feed(direction: str):
         return JSONResponse({"error": "Video not found"}, status_code=404)
     return StreamingResponse(gen_frames(video_path), media_type="multipart/x-mixed-replace; boundary=frame")
 
-# --- 2. Real-time vehicle detections ---
+
+# --- 2 & 3. Use Simulator for Detections & Traffic Light ---
+traffic_gen = generate_live_traffic(choose_road_to_open, predict_duration)
+
 @app.get("/api/detections")
 def get_detections():
-    vehicle_counts = {}
-    for road, cap in caps.items():
-        ret, frame = cap.read()
-        if not ret:
-            vehicle_counts[road] = {"vehicles": 0}
-            continue
-        frame = cv2.resize(frame, (640, 480))
-        _, count = process_frame(frame, yolo_model, road)
-        vehicle_counts[road] = {"vehicles": count}
-    return vehicle_counts
+    data = next(traffic_gen)
+    return data["road_counts"]
 
-# --- 3. Traffic light AI decision ---
 @app.get("/api/traffic-light")
 def get_traffic_light():
-    road_counts = {}
-    for road, cap in caps.items():
-        ret, frame = cap.read()
-        if not ret:
-            continue
-        frame = cv2.resize(frame, (640, 480))
-        _, count = process_frame(frame, yolo_model, road)
-        road_counts[road] = count
+    data = next(traffic_gen)
 
-    green_road = choose_road_to_open(road_counts)
-    duration = predict_duration(road_counts, green_road)
-    log_traffic_data(road_counts, green_road, duration)
-
-    state = {dir: "red" for dir in road_counts}
-    state[green_road] = "green"
-
+    # Save log entry
     log_entry = {
         "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        "event": f"Green to {green_road} for {duration}s"
+        "event": f"Green to {data['green_road']} for {data['duration']}s (settling {data['settling_time']}s, yellow {data['yellow_time']}s)"
     }
-
     logs = json.loads(LOG_FILE.read_text())
     logs.insert(0, log_entry)
-    LOG_FILE.write_text(json.dumps(logs[:50]))  # Keep last 50 logs
+    LOG_FILE.write_text(json.dumps(logs[:50]))
 
     return {
-        "green": green_road,
-        "duration": duration,
-        "states": state
+        "green": data["green_road"],
+        "duration": data["duration"],
+        "settling_time": data["settling_time"],
+        "yellow_time": data["yellow_time"],
+        "states": {
+            "north": "green" if data["green_road"] == "north" else "red",
+            "east": "green" if data["green_road"] == "east" else "red",
+            "south": "green" if data["green_road"] == "south" else "red",
+            "west": "green" if data["green_road"] == "west" else "red",
+        }
     }
+
 
 # --- 4. View logs ---
 @app.get("/api/logs")
@@ -125,24 +108,47 @@ def get_logs():
     logs = json.loads(LOG_FILE.read_text())
     return {"logs": logs}
 
+
 # --- 5. Summary stats ---
 @app.get("/api/stats")
 def get_stats():
-    road_counts = {}
-    total = 0
-    for road, cap in caps.items():
-        ret, frame = cap.read()
-        if not ret:
-            continue
-        frame = cv2.resize(frame, (640, 480))
-        _, count = process_frame(frame, yolo_model, road)
-        road_counts[road] = count
-        total += count
+    logs = json.loads(LOG_FILE.read_text())
 
-    # Simplified wait time estimate
-    average_wait = np.mean(list(road_counts.values())) * 2  # seconds per car, adjust as needed
+    # Store waiting times for each road
+    wait_times = {"north": [], "east": [], "south": [], "west": []}
+    last_green_time = {"north": None, "east": None, "south": None, "west": None}
+
+    # Replay logs to estimate wait times
+    for entry in reversed(logs):  # oldest first
+        event = entry["event"]
+        if "Green to" in event:
+            parts = event.split()
+            road = parts[2]  # e.g., "north"
+            duration = int(parts[4].replace("s", ""))
+
+            # Add settling + yellow times if present
+            extra_time = 0
+            if "settling" in event:
+                extra_time += int(event.split("settling")[1].split("s")[0].strip())
+            if "yellow" in event:
+                extra_time += int(event.split("yellow")[1].split("s")[0].strip())
+
+            total_green_time = duration + extra_time
+
+            # For other roads, this time contributes to their waiting
+            for r in wait_times.keys():
+                if r != road:
+                    wait_times[r].append(total_green_time)
+
+            # Reset wait for green road
+            last_green_time[road] = 0
+
+    # Compute averages
+    avg_wait = {r: round(np.mean(times), 2) if times else 0 for r, times in wait_times.items()}
+    total_vehicles = sum(avg_wait.values())  # proxy metric
 
     return {
-        "total_vehicles": total,
-        "average_wait_time": round(average_wait, 2)
+        "total_vehicles": total_vehicles,
+        "average_wait_time": avg_wait
     }
+
