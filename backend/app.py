@@ -11,10 +11,10 @@ import numpy as np
 import joblib
 from ultralytics import YOLO
 
+from .ReinforcementLearning.simulate_data import generate_live_traffic   # NEW
 from .ai_agent import choose_road_to_open
 from .logger import log_traffic_data
 from .ReinforcementLearning.predict import predict_duration
-from .ReinforcementLearning.simulate_data import generate_live_traffic   # NEW
 
 app = FastAPI()
 
